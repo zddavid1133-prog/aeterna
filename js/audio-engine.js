@@ -7,6 +7,8 @@
  * - Smart mono optimization: stems with identical stereo channels are kept as 1-channel, saving 50% RAM
  * - Sample-accurate sync via audioCtx.currentTime
  * - Minimal node graph: Source → Gain → Master → Destination
+ */
+
 import { parseWavToAudioBuffer } from './fast-wav-parser.js';
 
 export class AudioEngine {
