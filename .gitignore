@@ -11,4 +11,9 @@ android/build/
 android/app/build/
 android/capacitor-cordova-android-plugins/build/
 *.apk
+__pycache__/
+*.pyc
+gemini_key.txt
+tools/gemini_key.txt
+.env
 
