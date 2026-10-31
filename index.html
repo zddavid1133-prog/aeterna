@@ -16,8 +16,8 @@
   <!-- Styles -->
   <link rel="stylesheet" href="css/style.css">
   
-  <!-- JSZip from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- JSZip (bundled locally for 100% offline support) -->
+  <script src="js/jszip.min.js"></script>
 </head>
 <body>
 
@@ -38,7 +38,7 @@
     <!-- Upload Zone -->
     <section class="upload-section">
       <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept=".zip,.ogg,.opus,.mp3,.wav,.m4a,.aac,.webm,.flac" multiple>
+        <input type="file" id="file-input" accept="audio/*,application/zip,application/x-zip-compressed,.zip,.wav,.mp3,*/*" multiple>
         <span class="upload-icon">📂</span>
         <div class="upload-title">Subir Multitrack</div>
         <div class="upload-hint">ZIP con stems · o archivos de audio sueltos</div>

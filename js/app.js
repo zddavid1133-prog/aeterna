@@ -147,11 +147,28 @@ function escapeHtml(str) {
 // ============================================================
 
 async function handleFiles(files) {
-  if (!files || files.length === 0) return;
+  if (!files || files.length === 0) {
+    console.warn('[Aeterna] handleFiles called with no files');
+    return;
+  }
+
+  const fileList = Array.from(files);
+  const firstFile = fileList[0];
+
+  // Immediately show progress overlay so the user gets instant visual confirmation
+  showProgress('Procesando archivo(s)...', firstFile.name);
+  setStatus('loading', `Cargando ${firstFile.name}...`);
 
   try {
+    // Check for unsupported .rar format
+    if (firstFile.name.toLowerCase().endsWith('.rar')) {
+      hideProgress();
+      alert('⚠️ Los archivos .RAR no son compatibles directamente. Por favor comprímelo como archivo .ZIP o sube los archivos de audio (.WAV / .MP3) directamente.');
+      setStatus('error', 'Formato .RAR no soportado (usa .ZIP o audio)');
+      return;
+    }
+
     let stems;
-    const firstFile = files[0];
 
     if (firstFile.name.toLowerCase().endsWith('.zip')) {
       // ZIP file
@@ -161,8 +178,11 @@ async function handleFiles(files) {
       });
     } else {
       // Individual audio files
-      stems = extractStemsFromFiles(files);
+      showProgress('Analizando archivos de audio...', `${fileList.length} archivo(s)`);
+      stems = extractStemsFromFiles(fileList);
       if (stems.length === 0) {
+        hideProgress();
+        alert('⚠️ No se encontraron archivos de audio compatibles (.WAV, .MP3, .OGG, .M4A, .FLAC).');
         setStatus('error', 'No se encontraron archivos de audio válidos');
         return;
       }
@@ -189,6 +209,7 @@ async function handleFiles(files) {
   } catch (err) {
     hideProgress();
     setStatus('error', err.message);
+    alert('❌ Error al procesar multitrack: ' + err.message);
     console.error('Upload error:', err);
   }
 }
@@ -353,9 +374,19 @@ engine.onStateChange = (state) => {
 
 // File input
 dom.fileInput.addEventListener('change', (e) => {
-  handleFiles(e.target.files);
-  // Reset so same file can be re-selected
+  const fileList = e.target.files;
+  if (!fileList || fileList.length === 0) return;
+  // Convert FileList to a permanent Array before resetting the input value
+  const files = Array.from(fileList);
   e.target.value = '';
+  handleFiles(files);
+});
+
+// Click anywhere on upload zone triggers file input
+dom.uploadZone.addEventListener('click', (e) => {
+  if (e.target !== dom.fileInput) {
+    dom.fileInput.click();
+  }
 });
 
 // Drag & Drop

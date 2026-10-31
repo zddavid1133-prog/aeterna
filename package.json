@@ -20,6 +20,6 @@
     "@capacitor/android": "^8.6.0",
     "@capacitor/cli": "^8.6.0",
     "@capacitor/core": "^8.6.0",
-    "@capacitor/filesystem": "^8.1.5"
+    "jszip": "^3.10.2"
   }
 }

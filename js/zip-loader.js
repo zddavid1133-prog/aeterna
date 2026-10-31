@@ -41,7 +41,7 @@ export async function extractStemsFromZip(zipFile, onProgress) {
     if (relativePath.startsWith('__MACOSX')) return;
     if (relativePath.startsWith('.')) return;
 
-    const fileName = relativePath.split('/').pop();
+    const fileName = relativePath.split(/[\\/]/).pop();
     if (fileName.startsWith('.')) return;
 
     const ext = '.' + fileName.split('.').pop().toLowerCase();
