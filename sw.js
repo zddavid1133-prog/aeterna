@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aeterna-shell-v2';
+const CACHE_NAME = 'aeterna-shell-v3';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -32,11 +32,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: cache-first for shell, network-first for everything else
+// Fetch: NETWORK-FIRST strategy
+// When online → always fetch fresh code, update cache
+// When offline → serve from cache
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        // Got fresh response from network — update the cache
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => {
+        // Network failed (offline) — serve from cache
+        return caches.match(event.request);
+      })
   );
 });
