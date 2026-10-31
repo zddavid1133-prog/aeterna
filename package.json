@@ -1,0 +1,25 @@
+{
+  "name": "aeterna",
+  "version": "1.0.0",
+  "description": "Reproductor multitrack nativo para tocar en vivo",
+  "main": "index.html",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "cap:sync": "node scripts/build.js && npx cap sync",
+    "cap:build": "node scripts/build.js && npx cap sync && npx cap build android"
+  },
+  "keywords": [
+    "multitrack",
+    "audio",
+    "prime",
+    "live"
+  ],
+  "author": "Aeterna",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5"
+  }
+}

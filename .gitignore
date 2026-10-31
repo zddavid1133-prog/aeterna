@@ -1,3 +1,12 @@
 .DS_Store
 Thumbs.db
 node_modules/
+scratch/
+www/
+
+# Android build artifacts
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
