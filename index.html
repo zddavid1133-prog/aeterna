@@ -37,12 +37,12 @@
 
     <!-- Upload Zone -->
     <section class="upload-section">
-      <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept="audio/*,application/zip,application/x-zip-compressed,.zip,.wav,.mp3,*/*" multiple>
+      <label class="upload-zone" id="upload-zone" for="file-input">
+        <input type="file" id="file-input" accept="*/*" multiple>
         <span class="upload-icon">📂</span>
         <div class="upload-title">Subir Multitrack</div>
         <div class="upload-hint">ZIP con stems · o archivos de audio sueltos</div>
-      </div>
+      </label>
     </section>
 
     <!-- Song List -->
@@ -92,6 +92,20 @@
     <div class="progress-label" id="progress-label">Procesando...</div>
     <div class="progress-detail" id="progress-detail"></div>
   </div>
+
+  <!-- Live Debug Logs Drawer -->
+  <aside class="debug-drawer" id="debug-drawer">
+    <div class="debug-header">
+      <span class="debug-title">📋 Consola de Eventos (Logs)</span>
+      <div class="debug-actions">
+        <button id="btn-clear-logs" class="btn-debug">Limpiar</button>
+        <button id="btn-toggle-logs" class="btn-debug btn-debug-toggle">Mostrar</button>
+      </div>
+    </div>
+    <div class="debug-body" id="debug-body">
+      <div class="log-entry log-info">[Inicio] Aeterna listo. Esperando eventos...</div>
+    </div>
+  </aside>
 
   <!-- App Script (module) -->
   <script type="module" src="js/app.js"></script>

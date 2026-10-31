@@ -22,6 +22,60 @@ let animFrameId = null;
 
 const $ = (id) => document.getElementById(id);
 
+// ============================================================
+// Real-time Visual Logger (for on-screen debugging)
+// ============================================================
+const debugBody = $('debug-body');
+const debugDrawer = $('debug-drawer');
+const btnToggleLogs = $('btn-toggle-logs');
+const btnClearLogs = $('btn-clear-logs');
+
+export function logToScreen(level, text) {
+  if (!debugBody) return;
+  const entry = document.createElement('div');
+  entry.className = `log-entry log-${level}`;
+  const now = new Date().toTimeString().split(' ')[0];
+  entry.textContent = `[${now}] ${text}`;
+  debugBody.appendChild(entry);
+  debugBody.scrollTop = debugBody.scrollHeight;
+}
+
+// Hook console methods so every log appears in the on-screen console
+const origLog = console.log;
+const origWarn = console.warn;
+const origError = console.error;
+
+console.log = function(...args) {
+  origLog.apply(console, args);
+  logToScreen('info', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+};
+console.warn = function(...args) {
+  origWarn.apply(console, args);
+  logToScreen('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+};
+console.error = function(...args) {
+  origError.apply(console, args);
+  logToScreen('error', args.map(a => typeof a === 'object' ? (a.stack || a.message || JSON.stringify(a)) : String(a)).join(' '));
+};
+
+window.addEventListener('error', (e) => {
+  logToScreen('error', `Global Error: ${e.message} (${e.filename}:${e.lineno})`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  logToScreen('error', `Unhandled Promise: ${e.reason?.message || e.reason}`);
+});
+
+btnToggleLogs?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isExp = debugDrawer.classList.toggle('expanded');
+  btnToggleLogs.textContent = isExp ? 'Ocultar' : 'Mostrar';
+});
+
+btnClearLogs?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (debugBody) debugBody.innerHTML = '';
+});
+
 const dom = {
   statusDot:        $('status-dot'),
   statusText:       $('status-text'),
@@ -373,20 +427,31 @@ engine.onStateChange = (state) => {
 // ============================================================
 
 // File input
+dom.fileInput.addEventListener('click', () => {
+  logToScreen('event', '👆 Selector de archivos abierto');
+});
+
+dom.fileInput.addEventListener('cancel', () => {
+  logToScreen('warn', '⚠️ El usuario canceló la selección de archivos');
+});
+
 dom.fileInput.addEventListener('change', (e) => {
   const fileList = e.target.files;
-  if (!fileList || fileList.length === 0) return;
-  // Convert FileList to a permanent Array before resetting the input value
+  logToScreen('event', `📥 Evento change disparado! Cantidad de archivos: ${fileList ? fileList.length : 0}`);
+
+  if (!fileList || fileList.length === 0) {
+    logToScreen('warn', '⚠️ Lista de archivos vacía al cerrar selector');
+    return;
+  }
+
+  for (let i = 0; i < fileList.length; i++) {
+    const f = fileList[i];
+    logToScreen('info', `📄 [${i + 1}/${fileList.length}] ${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB, mime: "${f.type}")`);
+  }
+
   const files = Array.from(fileList);
   e.target.value = '';
   handleFiles(files);
-});
-
-// Click anywhere on upload zone triggers file input
-dom.uploadZone.addEventListener('click', (e) => {
-  if (e.target !== dom.fileInput) {
-    dom.fileInput.click();
-  }
 });
 
 // Drag & Drop
