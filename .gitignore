@@ -11,9 +11,14 @@ android/build/
 android/app/build/
 android/capacitor-cordova-android-plugins/build/
 *.apk
+apks/
 __pycache__/
 *.pyc
 gemini_key.txt
 tools/gemini_key.txt
 .env
+
+# Multitrack audio files (local only)
+multitracks_rar/
+multitracks_optimizados/
 
