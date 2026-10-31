@@ -35,6 +35,18 @@ def optimize_track(ffmpeg_bin, input_path, output_path):
     ]
     subprocess.run(cmd, check=True)
 
+def find_unrar():
+    candidates = [
+        r'C:\Program Files\WinRAR\UnRAR.exe',
+        r'C:\Program Files\WinRAR\WinRAR.exe',
+        r'C:\Program Files (x86)\WinRAR\UnRAR.exe',
+        shutil.which('unrar'),
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
 def process_target(target_path):
     target = Path(target_path)
     if not target.exists():
@@ -45,6 +57,9 @@ def process_target(target_path):
 
     # Determine song name and working directory
     is_zip = target.is_file() and target.suffix.lower() == '.zip'
+    is_rar = target.is_file() and target.suffix.lower() in ('.rar', '.cbr')
+    is_folder = target.is_dir()
+
     song_name = target.stem.replace('_Aeterna_Mono', '').replace('_mono', '').strip()
 
     work_dir = target.parent / f"temp_{song_name}"
@@ -60,17 +75,28 @@ def process_target(target_path):
     print(f"🎵 Optimizando Multitrack: {song_name}")
     print(f"========================================================")
 
-    # Step 1: Collect files
+    # Step 1: Collect files (support ZIP, RAR, or plain Folder)
     source_files = []
     if is_zip:
-        print("📦 Descomprimiendo archivo ZIP original...")
+        print("📦 Descomprimiendo archivo .ZIP...")
         with zipfile.ZipFile(target, 'r') as z:
             z.extractall(work_dir)
         source_dir = work_dir
-    elif target.is_dir():
+    elif is_rar:
+        print("📦 Descomprimiendo archivo .RAR con UnRAR...")
+        unrar_bin = find_unrar()
+        if not unrar_bin:
+            print("❌ Error: No se encontró WinRAR/UnRAR en la PC para descomprimir el archivo .RAR.")
+            return
+        dest_str = str(work_dir)
+        if not dest_str.endswith(os.sep): dest_str += os.sep
+        cmd = [unrar_bin, 'x', '-y', '-inul', str(target), dest_str]
+        subprocess.run(cmd, check=True)
+        source_dir = work_dir
+    elif is_folder:
         source_dir = target
     else:
-        print("❌ Por favor arrastra una carpeta con stems o un archivo .ZIP.")
+        print("❌ Por favor arrastra un archivo .ZIP, .RAR o una carpeta con stems.")
         return
 
     # Find all audio files
