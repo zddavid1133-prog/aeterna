@@ -1,17 +1,17 @@
 /**
  * db.js — IndexedDB persistence layer for Aeterna
  * 
- * Stores compressed audio blobs in IndexedDB so they persist
- * between sessions. Only the compressed bytes are stored — 
- * decoding happens at load time via the audio engine.
+ * Stores compressed audio blobs AND decoded PCM data in IndexedDB.
  * 
  * Schema:
- *   songs store: { id, name, createdAt }
- *   stems store: { id, songId, name, blob, mimeType }
+ *   songs store:     { id, name, stemCount, createdAt }
+ *   stems store:     { id, songId, name, blob, mimeType }          ← compressed originals
+ *   pcm_cache store: { id, songId, name, sampleRate,               ← decoded PCM (instant load)
+ *                      numberOfChannels, length, channels: [ArrayBuffer...] }
  */
 
 const DB_NAME = 'AeternaDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _db = null;
 
@@ -31,10 +31,16 @@ function openDB() {
         db.createObjectStore('songs', { keyPath: 'id' });
       }
 
-      // Stems store — audio blobs keyed by auto-increment, indexed by songId
+      // Stems store — compressed audio blobs
       if (!db.objectStoreNames.contains('stems')) {
         const stemStore = db.createObjectStore('stems', { keyPath: 'id', autoIncrement: true });
         stemStore.createIndex('bySongId', 'songId', { unique: false });
+      }
+
+      // PCM cache store — decoded raw audio data (NEW in v2)
+      if (!db.objectStoreNames.contains('pcm_cache')) {
+        const pcmStore = db.createObjectStore('pcm_cache', { keyPath: 'id', autoIncrement: true });
+        pcmStore.createIndex('bySongId', 'songId', { unique: false });
       }
     };
 
@@ -84,7 +90,7 @@ export async function saveSong(songId, songName, stems) {
 }
 
 /**
- * Get all stems for a song
+ * Get all stems for a song (compressed blobs)
  * @param {string} songId
  * @returns {Promise<Array<{name: string, blob: Blob, mimeType: string}>>}
  */
@@ -95,6 +101,55 @@ export async function getSongStems(songId) {
     const index = tx.objectStore('stems').index('bySongId');
     const request = index.getAll(songId);
     request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Save decoded PCM data for a song's stems.
+ * Each stem's AudioBuffer channels are extracted as Float32Array → ArrayBuffer
+ * so they can be stored in IndexedDB and reconstructed instantly.
+ * 
+ * @param {string} songId
+ * @param {Array<{name: string, sampleRate: number, numberOfChannels: number, length: number, channels: ArrayBuffer[]}>} pcmStems
+ */
+export async function savePCMCache(songId, pcmStems) {
+  const db = await openDB();
+
+  for (const stem of pcmStems) {
+    const tx = db.transaction('pcm_cache', 'readwrite');
+    tx.objectStore('pcm_cache').put({
+      songId: songId,
+      name: stem.name,
+      sampleRate: stem.sampleRate,
+      numberOfChannels: stem.numberOfChannels,
+      length: stem.length,
+      channels: stem.channels  // Array of ArrayBuffer, one per channel
+    });
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+}
+
+/**
+ * Get cached PCM data for a song.
+ * Returns null if no cache exists (first-time load).
+ * 
+ * @param {string} songId
+ * @returns {Promise<Array<{name, sampleRate, numberOfChannels, length, channels: ArrayBuffer[]}> | null>}
+ */
+export async function getPCMCache(songId) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pcm_cache', 'readonly');
+    const index = tx.objectStore('pcm_cache').index('bySongId');
+    const request = index.getAll(songId);
+    request.onsuccess = () => {
+      const results = request.result;
+      resolve(results && results.length > 0 ? results : null);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -114,16 +169,16 @@ export async function listSongs() {
 }
 
 /**
- * Delete a song and all its stems
+ * Delete a song, all its stems, AND its PCM cache
  * @param {string} songId
  */
 export async function deleteSong(songId) {
   const db = await openDB();
 
-  // Delete stems first
+  // Delete compressed stems
   const txStems = db.transaction('stems', 'readwrite');
-  const index = txStems.objectStore('stems').index('bySongId');
-  const stemsRequest = index.getAllKeys(songId);
+  const stemIndex = txStems.objectStore('stems').index('bySongId');
+  const stemsRequest = stemIndex.getAllKeys(songId);
   
   await new Promise((resolve, reject) => {
     stemsRequest.onsuccess = () => {
@@ -135,6 +190,23 @@ export async function deleteSong(songId) {
       txStems.onerror = () => reject(txStems.error);
     };
     stemsRequest.onerror = () => reject(stemsRequest.error);
+  });
+
+  // Delete PCM cache
+  const txPcm = db.transaction('pcm_cache', 'readwrite');
+  const pcmIndex = txPcm.objectStore('pcm_cache').index('bySongId');
+  const pcmRequest = pcmIndex.getAllKeys(songId);
+  
+  await new Promise((resolve, reject) => {
+    pcmRequest.onsuccess = () => {
+      const keys = pcmRequest.result;
+      keys.forEach((key) => {
+        txPcm.objectStore('pcm_cache').delete(key);
+      });
+      txPcm.oncomplete = resolve;
+      txPcm.onerror = () => reject(txPcm.error);
+    };
+    pcmRequest.onerror = () => reject(pcmRequest.error);
   });
 
   // Delete song metadata

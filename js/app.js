@@ -5,7 +5,7 @@
  */
 
 import { AudioEngine } from './audio-engine.js';
-import { saveSong, getSongStems, listSongs, deleteSong } from './db.js';
+import { saveSong, getSongStems, listSongs, deleteSong, savePCMCache, getPCMCache } from './db.js';
 import { extractStemsFromZip, extractStemsFromFiles } from './zip-loader.js';
 
 // ============================================================
@@ -208,24 +208,50 @@ async function loadSong(songId) {
     currentSongId = songId;
     refreshSongList();
 
-    // Get stems from IndexedDB
-    showProgress('Cargando pistas...', 'Leyendo desde almacenamiento');
-    const stems = await getSongStems(songId);
+    // ========================================
+    // FAST PATH: Try loading from PCM cache
+    // ========================================
+    const cachedPCM = await getPCMCache(songId);
 
-    if (!stems || stems.length === 0) {
+    if (cachedPCM) {
+      // PCM cache hit — instant load, no decoding needed
+      showProgress('⚡ Carga instantánea...', 'Desde caché PCM');
+
+      engine.onDecodeProgress = (current, total, name) => {
+        updateProgress('⚡ Cargando...', `${current}/${total}: ${name}`);
+      };
+
+      await engine.loadFromPCM(cachedPCM);
+
       hideProgress();
-      setStatus('error', 'No se encontraron pistas');
-      return;
+
+    } else {
+      // ========================================
+      // SLOW PATH: First time — decode + cache
+      // ========================================
+      showProgress('Cargando pistas...', 'Leyendo desde almacenamiento');
+      const stems = await getSongStems(songId);
+
+      if (!stems || stems.length === 0) {
+        hideProgress();
+        setStatus('error', 'No se encontraron pistas');
+        return;
+      }
+
+      // Decode sequentially (the key mobile optimization)
+      engine.onDecodeProgress = (current, total, name) => {
+        updateProgress('Decodificando audio...', `${current}/${total}: ${name}`);
+      };
+
+      await engine.loadStems(stems);
+
+      // Extract decoded PCM and save to IndexedDB for instant loading next time
+      updateProgress('Guardando caché PCM...', 'Para carga instantánea');
+      const pcmData = engine.getDecodedPCM();
+      await savePCMCache(songId, pcmData);
+
+      hideProgress();
     }
-
-    // Decode sequentially (the key optimization)
-    engine.onDecodeProgress = (current, total, name) => {
-      updateProgress('Decodificando audio...', `${current}/${total}: ${name}`);
-    };
-
-    await engine.loadStems(stems);
-
-    hideProgress();
 
     // Update UI with loaded song info
     const songs = await listSongs();
