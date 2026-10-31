@@ -5,7 +5,7 @@
  */
 
 import { AudioEngine } from './audio-engine.js';
-import { saveSong, getSongStems, listSongs, deleteSong, savePCMCache, getPCMCache } from './db.js';
+import { saveSong, getSongStems, listSongs, deleteSong } from './db.js';
 import { extractStemsFromZip, extractStemsFromFiles } from './zip-loader.js';
 
 // ============================================================
@@ -210,70 +210,26 @@ async function loadSong(songId) {
 
     const t0 = performance.now();
 
-    // ========================================
-    // FAST PATH: Try loading from PCM cache
-    // ========================================
-    console.log('[Aeterna] Checking PCM cache for song:', songId);
-    let cachedPCM = null;
-    try {
-      cachedPCM = await getPCMCache(songId);
-    } catch (cacheErr) {
-      console.warn('[Aeterna] PCM cache read failed:', cacheErr);
+    showProgress('Cargando pistas...', 'Leyendo desde almacenamiento');
+    const stems = await getSongStems(songId);
+
+    if (!stems || stems.length === 0) {
+      hideProgress();
+      setStatus('error', 'No se encontraron pistas');
+      return;
     }
 
-    if (cachedPCM) {
-      // PCM cache hit — instant load, no decoding needed
-      console.log('[Aeterna] ⚡ PCM CACHE HIT — loading', cachedPCM.length, 'stems instantly');
-      showProgress('⚡ Carga instantánea...', 'Desde caché PCM');
+    // Decode sequentially with memory optimization
+    engine.onDecodeProgress = (current, total, name) => {
+      updateProgress('Decodificando audio...', `${current}/${total}: ${name}`);
+    };
 
-      engine.onDecodeProgress = (current, total, name) => {
-        updateProgress('⚡ Cargando...', `${current}/${total}: ${name}`);
-      };
+    await engine.loadStems(stems);
 
-      await engine.loadFromPCM(cachedPCM);
-      hideProgress();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
 
-      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-      setStatus('ready', `⚡ ${engine.tracks.length} pistas en ${elapsed}s (caché)`);
-
-    } else {
-      // ========================================
-      // SLOW PATH: First time — decode + cache
-      // ========================================
-      console.log('[Aeterna] ❌ PCM CACHE MISS — decoding from compressed blobs');
-      showProgress('Cargando pistas...', 'Leyendo desde almacenamiento');
-      const stems = await getSongStems(songId);
-
-      if (!stems || stems.length === 0) {
-        hideProgress();
-        setStatus('error', 'No se encontraron pistas');
-        return;
-      }
-
-      // Decode sequentially (the key mobile optimization)
-      engine.onDecodeProgress = (current, total, name) => {
-        updateProgress('Decodificando audio...', `${current}/${total}: ${name}`);
-      };
-
-      await engine.loadStems(stems);
-
-      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-
-      // Extract decoded PCM and save to IndexedDB for instant loading next time
-      try {
-        updateProgress('💾 Guardando caché PCM...', 'Para carga instantánea la próxima vez');
-        console.log('[Aeterna] Saving PCM cache...');
-        const pcmData = engine.getDecodedPCM();
-        await savePCMCache(songId, pcmData);
-        console.log('[Aeterna] ✅ PCM cache saved successfully');
-      } catch (saveErr) {
-        // Don't crash if cache save fails — the audio is already loaded and playable
-        console.error('[Aeterna] ⚠️ PCM cache save failed:', saveErr);
-      }
-
-      hideProgress();
-      setStatus('ready', `🔄 ${engine.tracks.length} pistas en ${elapsed}s (decodificado)`);
-    }
+    hideProgress();
+    setStatus('ready', `🎵 ${engine.tracks.length} pistas listas en ${elapsed}s`);
 
     // Update UI with loaded song info
     const songs = await listSongs();

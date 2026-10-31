@@ -2,9 +2,9 @@
  * audio-engine.js — Core multitrack audio engine for Aeterna
  * 
  * Design principles:
- * - Single shared AudioContext for all tracks
- * - Sequential decoding to avoid CPU spikes on mobile
- * - PCM cache: decode once, reconstruct instantly from raw Float32 data
+ * - Single shared AudioContext matching hardware native sample rate (no forced resampling)
+ * - Sequential decoding with garbage collection pauses to prevent mobile CPU/RAM spikes
+ * - Smart mono optimization: stems with identical stereo channels are kept as 1-channel, saving 50% RAM
  * - Sample-accurate sync via audioCtx.currentTime
  * - Minimal node graph: Source → Gain → Master → Destination
  */
@@ -45,10 +45,9 @@ export class AudioEngine {
   init() {
     if (this.ctx) return;
 
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)({
-      // 44100 matches most stems, avoids forced resampling on mobile
-      sampleRate: 44100
-    });
+    // Use native hardware sample rate to avoid audio glitches and heavy resampling overhead
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AudioContextClass();
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.connect(this.ctx.destination);
@@ -64,9 +63,44 @@ export class AudioEngine {
   }
 
   /**
+   * If a stem has 2 channels (stereo) but both channels are identical
+   * (e.g. click, cue, bass, lead vocals bounced as stereo in DAWs),
+   * downmix it to a 1-channel buffer. Web Audio will center-pan it to stereo automatically,
+   * saving 50% of the RAM for that track!
+   * 
+   * @param {AudioBuffer} audioBuffer
+   * @returns {AudioBuffer}
+   */
+  _optimizeBuffer(audioBuffer) {
+    if (audioBuffer.numberOfChannels !== 2) return audioBuffer;
+
+    const ch0 = audioBuffer.getChannelData(0);
+    const ch1 = audioBuffer.getChannelData(1);
+    const len = ch0.length;
+
+    // Fast check: sample 1000 points across the track
+    let isIdentical = true;
+    const step = Math.max(1, Math.floor(len / 1000));
+    for (let i = 0; i < len; i += step) {
+      if (Math.abs(ch0[i] - ch1[i]) > 0.0001) {
+        isIdentical = false;
+        break;
+      }
+    }
+
+    if (!isIdentical) {
+      return audioBuffer;
+    }
+
+    // It's a mono track exported as stereo! Downmix to 1 channel
+    const monoBuffer = this.ctx.createBuffer(1, len, audioBuffer.sampleRate);
+    monoBuffer.copyToChannel(ch0, 0);
+    return monoBuffer;
+  }
+
+  /**
    * Load and decode audio blobs into AudioBuffers — SEQUENTIALLY
-   * This is the key optimization: decoding one at a time prevents
-   * CPU spikes that crash mobile browsers.
+   * Decoding one at a time with GC breathing room prevents mobile crashes.
    * 
    * @param {Array<{name: string, blob: Blob}>} stems
    */
@@ -85,8 +119,12 @@ export class AudioEngine {
       }
 
       try {
-        const arrayBuffer = await stem.blob.arrayBuffer();
-        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        let arrayBuffer = await stem.blob.arrayBuffer();
+        let audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        arrayBuffer = null; // Free compressed buffer immediately
+
+        // Memory optimization: downmix false-stereo stems to mono (cuts RAM in half)
+        audioBuffer = this._optimizeBuffer(audioBuffer);
 
         this.tracks.push({
           name: stem.name,
@@ -94,8 +132,10 @@ export class AudioEngine {
         });
       } catch (err) {
         console.warn(`Failed to decode "${stem.name}":`, err);
-        // Skip undecodable stems instead of crashing
       }
+
+      // Small pause to allow GC to run and keep the UI responsive between stems
+      await new Promise(r => setTimeout(r, 40));
     }
 
     if (this.tracks.length === 0) {
@@ -105,79 +145,6 @@ export class AudioEngine {
 
     this._playOffset = 0;
     this._setState('ready');
-  }
-
-  /**
-   * INSTANT LOAD: Reconstruct AudioBuffers from cached raw PCM data.
-   * No decoding needed — just copies Float32 arrays into AudioBuffers.
-   * Typical time: < 500ms for 8 stems of 5 minutes each.
-   * 
-   * @param {Array<{name: string, sampleRate: number, numberOfChannels: number, length: number, channels: ArrayBuffer[]}>} pcmStems
-   */
-  async loadFromPCM(pcmStems) {
-    this.init();
-    await this._ensureResumed();
-
-    this._setState('loading');
-    this.tracks = [];
-
-    for (let i = 0; i < pcmStems.length; i++) {
-      const stem = pcmStems[i];
-
-      if (this.onDecodeProgress) {
-        this.onDecodeProgress(i + 1, pcmStems.length, stem.name);
-      }
-
-      // Create an empty AudioBuffer with the exact specs from cache
-      const buffer = this.ctx.createBuffer(
-        stem.numberOfChannels,
-        stem.length,
-        stem.sampleRate
-      );
-
-      // Copy each channel's raw Float32 data directly into the buffer
-      for (let ch = 0; ch < stem.numberOfChannels; ch++) {
-        const float32 = new Float32Array(stem.channels[ch]);
-        buffer.copyToChannel(float32, ch);
-      }
-
-      this.tracks.push({
-        name: stem.name,
-        buffer: buffer
-      });
-    }
-
-    this._playOffset = 0;
-    this._setState('ready');
-  }
-
-  /**
-   * Extract raw PCM data from currently loaded AudioBuffers.
-   * Call this after loadStems() to get the decoded data for caching.
-   * 
-   * @returns {Array<{name: string, sampleRate: number, numberOfChannels: number, length: number, channels: ArrayBuffer[]}>}
-   */
-  getDecodedPCM() {
-    return this.tracks.map(track => {
-      const buffer = track.buffer;
-      const channels = [];
-
-      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-        // getChannelData returns Float32Array — copy to a standalone ArrayBuffer
-        const channelData = buffer.getChannelData(ch);
-        const copy = new Float32Array(channelData.length);
-        copy.set(channelData);
-        channels.push(copy.buffer);
-      }
-
-      return {
-        name: track.name,
-        sampleRate: buffer.sampleRate,
-        numberOfChannels: buffer.numberOfChannels,
-        length: buffer.length,
-        channels: channels
-      };
-    });
   }
 
   /**
@@ -216,7 +183,7 @@ export class AudioEngine {
     this._stopSources();
 
     // Schedule all tracks to start at the exact same moment
-    // The 0.05s buffer gives the browser time to set up all nodes
+    // 0.05s buffer gives the audio thread time to prepare
     const startTime = this.ctx.currentTime + 0.05;
     this._playStartTime = startTime;
 
@@ -225,11 +192,9 @@ export class AudioEngine {
       source.buffer = track.buffer;
 
       const gain = this.ctx.createGain();
-      
       source.connect(gain);
       gain.connect(this.masterGain);
 
-      // Start at the scheduled time, with offset for seeking
       const offset = Math.min(this._playOffset, track.buffer.duration);
       const remaining = track.buffer.duration - offset;
 
@@ -238,8 +203,10 @@ export class AudioEngine {
       }
 
       source.onended = () => {
-        source.disconnect();
-        gain.disconnect();
+        try {
+          source.disconnect();
+          gain.disconnect();
+        } catch (e) {}
       };
 
       this.activeSources.push({ source, gain });
@@ -262,12 +229,11 @@ export class AudioEngine {
   }
 
   /**
-   * Stop playback and reset to current position
+   * Stop playback and save current position
    */
   stop() {
     if (this.state !== 'playing') return;
 
-    // Save current position before stopping
     this._playOffset = this.getCurrentTime();
     this._stopSources();
     this._setState('ready');
@@ -282,7 +248,6 @@ export class AudioEngine {
     this._playOffset = Math.max(0, Math.min(time, duration));
 
     if (this.state === 'playing') {
-      // Stop and restart from new position
       this._stopSources();
       this._setState('ready');
       this.play();
@@ -310,9 +275,7 @@ export class AudioEngine {
         source.stop();
         source.disconnect();
         gain.disconnect();
-      } catch (e) {
-        // Already stopped
-      }
+      } catch (e) {}
     }
     this.activeSources = [];
   }
