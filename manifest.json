@@ -1,0 +1,18 @@
+{
+  "name": "Aeterna Multitrack",
+  "short_name": "Aeterna",
+  "description": "Reproductor multitrack optimizado para tocar en vivo",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0f",
+  "theme_color": "#7c3aed",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%237c3aed'/><text x='256' y='340' font-size='280' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>A</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

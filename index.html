@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Aeterna — Reproductor multitrack para tocar en vivo">
+  
+  <title>Aeterna</title>
+  
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+  
+  <!-- JSZip from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- Header -->
+    <header class="header">
+      <h1>Aeterna</h1>
+      <div class="subtitle">Multitrack Engine</div>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status-text" class="status-text">Listo para cargar</span>
+    </div>
+
+    <!-- Upload Zone -->
+    <section class="upload-section">
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".zip,.ogg,.opus,.mp3,.wav,.m4a,.aac,.webm,.flac" multiple>
+        <span class="upload-icon">📂</span>
+        <div class="upload-title">Subir Multitrack</div>
+        <div class="upload-hint">ZIP con stems · o archivos de audio sueltos</div>
+      </div>
+    </section>
+
+    <!-- Song List -->
+    <section class="song-list" id="song-list">
+      <div class="song-list-title">Canciones guardadas</div>
+      <div id="song-list-content">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- Transport Controls -->
+    <section class="transport" id="transport">
+      <div class="transport-song-name empty" id="transport-song-name">Ninguna canción seleccionada</div>
+      
+      <!-- Time -->
+      <div class="time-display">
+        <span id="time-current">0:00</span>
+        <span id="time-total">0:00</span>
+      </div>
+
+      <!-- Seek Bar -->
+      <div class="seek-bar-container" id="seek-bar">
+        <div class="seek-bar-track">
+          <div class="seek-bar-fill" id="seek-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="transport-buttons">
+        <button class="btn-transport btn-secondary" id="btn-rewind" disabled title="Volver al inicio">⏮</button>
+        <button class="btn-transport btn-play" id="btn-play" disabled title="Reproducir">▶</button>
+        <button class="btn-transport btn-secondary" id="btn-stop" disabled title="Detener">⏹</button>
+      </div>
+
+      <!-- Loaded Stems -->
+      <div class="stems-list hidden" id="stems-list">
+        <div class="stems-list-title">Pistas cargadas</div>
+        <div id="stems-list-content"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Progress Overlay -->
+  <div class="progress-overlay" id="progress-overlay">
+    <div class="progress-spinner"></div>
+    <div class="progress-label" id="progress-label">Procesando...</div>
+    <div class="progress-detail" id="progress-detail"></div>
+  </div>
+
+  <!-- App Script (module) -->
+  <script type="module" src="js/app.js"></script>
+
+</body>
+</html>
